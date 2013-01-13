@@ -4,6 +4,7 @@ Save backup files to Dropbox.
 import re
 import datetime
 import tempfile
+import tarfile
 from ... import utils
 from ...dbcommands import DBCommands
 from ...dbcommands import DATE_FORMAT
@@ -14,6 +15,8 @@ from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 from django.core.management.base import LabelCommand
 from optparse import make_option
+import logging
+logger = logging.getLogger(__name__)
 
 DATABASE_KEYS = getattr(settings, 'DBBACKUP_DATABASES', settings.DATABASES.keys())
 
@@ -43,14 +46,56 @@ class Command(LabelCommand):
         except StorageError, err:
             raise CommandError(err)
 
+    # def save_new_backup(self, database):
+    #     """ Save a new backup file. """
+    #     print "Backing Up Database: %s" % database['NAME']
+    #     backupfile = tempfile.SpooledTemporaryFile(max_size=10*1024*1024)
+    #     backupfile.name = self.dbcommands.filename(self.servername)
+    #     self.dbcommands.run_backup_commands(backupfile)
+    #     print "  Backup tempfile created: %s (%s)" % (backupfile.name, utils.handle_size(backupfile))
+    #     print "  Writing file to %s: %s" % (self.storage.name, self.storage.backup_dir())
+    #     self.storage.write_file(backupfile)
+
     def save_new_backup(self, database):
-        """ Save a new backup file. """
+        """
+        Overwrite original function
+        """
+        max_size = 10*1024*1024
+
+        # dump db
         print "Backing Up Database: %s" % database['NAME']
-        backupfile = tempfile.SpooledTemporaryFile(max_size=10*1024*1024)
+        dbdump = tempfile.SpooledTemporaryFile(max_size=max_size)
+        self.dbcommands.run_backup_commands(dbdump)
+        print "DB dump tempfile created: %s" % utils.handle_size(dbdump)
+        dbdump.seek(0)
+
+        # create backup file
+        backupfile = tempfile.SpooledTemporaryFile(max_size=max_size)
         backupfile.name = self.dbcommands.filename(self.servername)
-        self.dbcommands.run_backup_commands(backupfile)
-        print "  Backup tempfile created: %s (%s)" % (backupfile.name, utils.handle_size(backupfile))
-        print "  Writing file to %s: %s" % (self.storage.name, self.storage.backup_dir())
+
+        # create tar file inside backup file
+        compression = getattr(settings, 'BACKUP_COMPRESSION', 'bz2')
+        tar = tarfile.open(mode='w:%s' % compression, fileobj=backupfile)
+
+        # add database dump
+        tarinfo = tar.gettarinfo(arcname='dump.sql', fileobj=dbdump)
+        dbdump.seek(0)
+        tar.addfile(tarinfo, fileobj=dbdump)
+        dbdump.close()
+
+        # add to archive directories
+        backup_directories = getattr(settings, 'BACKUP_DIRECTORIES', {})
+        for dirname in backup_directories:
+            tar.add(backup_directories[dirname], dirname)
+
+        tar.close()
+        backupfile.seek(0)
+
+        print "Compressed tempfile created: %s (%s)" % (
+            backupfile.name, utils.handle_size(backupfile))
+
+        print "Writing file to %s: %s" % (
+            self.storage.name, self.storage.backup_dir())
         self.storage.write_file(backupfile)
 
     def cleanup_old_backups(self, database):

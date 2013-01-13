@@ -20,14 +20,16 @@ for dirpath, dirnames, filenames in os.walk(package_dir):
         packages.append(pkg)
 
 
-setup(name='django-dbbackup',
+setup(
+    name='django-dbbackup',
     version='1.62',
     description='Management commands to help backup and restore a project database to AmazonS3, Dropbox or local disk.',
     long_description=read('README.txt'),
     author='Michael Shepanski',
     author_email='mjs7231@gmail.com',
-    install_requires=['simples3==1.0', 'dropbox>=1.3'],
+    install_requires=['simples3==1.0', 'dropbox>=1.3', 'poster'],
     license='BSD',
     url='http://bitbucket.org/mjs7231/django-dbbackup',
-    keywords = ['django','dropbox','database','backup','amazon','s3'],
-    packages=packages)
+    keywords=['django', 'dropbox', 'database', 'backup', 'amazon', 's3'],
+    packages=packages
+)
